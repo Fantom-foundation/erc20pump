@@ -155,7 +155,7 @@ func (lp *logPuller) process(ev types.Log) {
 	if !ok {
 		rec, err = lp.rpc.TrxRecipient(ev.TxHash)
 		if err != nil {
-			fmt.Println("can not get tx recipient", err.Error())
+			fmt.Println("can not get tx recipient:", err.Error())
 			return
 		}
 

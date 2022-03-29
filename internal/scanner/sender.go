@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -19,6 +20,8 @@ import (
 type sender struct {
 	input    chan trx.BlockchainTransaction
 	uploader *s3manager.Uploader
+	queue    []trx.BlockchainTransaction
+	lastSent time.Time
 	bucket   string
 	sigStop  chan bool
 	wg       *sync.WaitGroup
@@ -33,6 +36,7 @@ func newSender(config *cfg.Config, in chan trx.BlockchainTransaction) *sender {
 	return &sender{
 		input:   in,
 		uploader: s3manager.NewUploader(sess),
+		lastSent: time.Now(),
 		bucket:  config.AwsS3Bucket,
 		sigStop: make(chan bool, 1),
 	}
@@ -63,19 +67,28 @@ func (se *sender) observe() {
 		case <-se.sigStop:
 			return
 		case tx := <-se.input:
-			se.send(tx)
+			se.process(tx)
 		}
 	}
 }
 
-// send the given transaction to the consumer.
-func (se *sender) send(tx trx.BlockchainTransaction) {
-	fmt.Println("storing", tx.TXHash.String())
+// process adds the transaction into queue, sends if the queue is log/old enough
+func (se *sender) process(tx trx.BlockchainTransaction) {
+	// add to queue
+	se.queue = append(se.queue, tx)
+
+	if len(se.queue) >= 100 || time.Now().Sub(se.lastSent) > 60 * time.Second {
+		se.send()
+	}
+}
+
+func (se *sender) send() {
+	log.Printf("sending %d transactions", len(se.queue))
 
 	// encode the transaction into a human-readable JSON struct
-	data, err := json.MarshalIndent(tx, "", "    ")
+	data, err := json.MarshalIndent(se.queue, "", "    ")
 	if err != nil {
-		fmt.Println("can not encode to JSON", err.Error())
+		fmt.Println("can not encode transactions into JSON", err.Error())
 		return
 	}
 
@@ -84,12 +97,15 @@ func (se *sender) send(tx trx.BlockchainTransaction) {
 	// put the data into a file
 	result, err := se.uploader.Upload(&s3manager.UploadInput{
 		Bucket: aws.String(se.bucket),
-		Key:    aws.String(tx.TXHash.String()+".json"),
+		Key:    aws.String(se.queue[0].TXHash.String()+".json"),
 		Body:   bytes.NewReader(data),
 	})
 	if err != nil {
 		log.Fatalf("Failed to upload into S3; %s", err)
 		return
 	}
-	log.Printf("Uploaded tx %s into S3 as %s", tx.TXHash.String(), result.Location)
+	log.Printf("Uploaded %d transactions into S3 as %s", len(se.queue), result.Location)
+
+	// empty the queue
+	se.queue = make([]trx.BlockchainTransaction, 0, 100)
 }

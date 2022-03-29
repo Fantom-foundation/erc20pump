@@ -67,7 +67,6 @@ func (a *Adapter) TrxRecipient(tx common.Hash) (common.Address, error) {
 	}
 
 	if trx.To() == nil {
-		fmt.Println("contract deployment transaction", tx.String())
 		return common.Address{}, fmt.Errorf("contract deployment")
 	}
 
