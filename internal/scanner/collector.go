@@ -105,8 +105,11 @@ func (lc *logCollector) newTransaction(ev types.Log) {
 	}
 
 	block, err := lc.cache.Block(ev.BlockNumber, lc.rpc.Block)
-	if err != nil {
+	if block == nil {
 		log.Fatalf("unable to get block %d; %s", ev.BlockNumber, err)
+	}
+	if block.Header() == nil {
+		log.Fatalf("unable to get block %d - nil header; %s", ev.BlockNumber, err)
 	}
 
 	tran, err := lc.cache.Transaction(ev.TxHash, lc.rpc.Transaction)
@@ -117,7 +120,7 @@ func (lc *logCollector) newTransaction(ev types.Log) {
 	// make a new transaction record
 	lc.currentTrx = &trx.BlockchainTransaction{
 		TXHash:       ev.TxHash,
-		BlockNumber:  ev.BlockNumber,
+		BlockNumber:  hexutil.Uint64(ev.BlockNumber),
 		Timestamp:    hexutil.Uint64(block.Time()),
 		Transactions: make([]trx.Erc20Transaction, 0),
 	}

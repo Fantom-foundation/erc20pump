@@ -9,7 +9,7 @@ import (
 // BlockchainTransaction represents a blockchain transaction.
 type BlockchainTransaction struct {
 	TXHash       common.Hash        `json:"hash"`
-	BlockNumber  uint64             `json:"-"`
+	BlockNumber  hexutil.Uint64     `json:"blockNumber"`
 	Timestamp    hexutil.Uint64     `json:"timestamp"`
 	To           common.Address     `json:"to"`
 	Transactions []Erc20Transaction `json:"erc20Transactions"`
