@@ -67,3 +67,13 @@ func (a *Adapter) Transaction(tx common.Hash) (*types.Transaction, error) {
 	}
 	return trx, nil
 }
+
+// Block provides the block details.
+func (a *Adapter) Block(blockNumber uint64) (*types.Block, error) {
+	block, err := a.ftm.BlockByNumber(context.Background(), big.NewInt(int64(blockNumber)))
+	if err != nil {
+		fmt.Println("failed to get block", blockNumber, err)
+		return nil, err
+	}
+	return block, nil
+}

@@ -30,7 +30,6 @@ type logPuller struct {
 	rpc           *rpc.Adapter
 	cache         *cache.MemCache
 	topics        [][]common.Hash
-	txRecipients  map[common.Hash]common.Address
 	contractMatch func(rc *common.Address) bool
 }
 
@@ -138,11 +137,6 @@ func (lp *logPuller) nextLogs() []types.Log {
 	if err != nil {
 		fmt.Println("failed to pull logs", err.Error())
 		return nil
-	}
-
-	// clear tx recipients map, if it makes sense
-	if len(logs) > 0 {
-		lp.txRecipients = make(map[common.Hash]common.Address)
 	}
 
 	// advance current block

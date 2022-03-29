@@ -11,6 +11,7 @@ type BlockchainTransaction struct {
 	TXHash       common.Hash        `json:"hash"`
 	BlockNumber  uint64             `json:"-"`
 	Timestamp    hexutil.Uint64     `json:"timestamp"`
+	To           common.Address     `json:"to"`
 	Transactions []Erc20Transaction `json:"erc20Transactions"`
 }
 

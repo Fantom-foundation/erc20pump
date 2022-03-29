@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	"log"
 	"math/big"
 	"sync"
 )
@@ -103,12 +104,25 @@ func (lc *logCollector) newTransaction(ev types.Log) {
 		lc.output <- *lc.currentTrx
 	}
 
+	block, err := lc.cache.Block(ev.BlockNumber, lc.rpc.Block)
+	if err != nil {
+		log.Fatalf("unable to get block %d; %s", ev.BlockNumber, err)
+	}
+
+	tran, err := lc.cache.Transaction(ev.TxHash, lc.rpc.Transaction)
+	if tran == nil {
+		log.Fatalf("unable to get trx %s; %s", ev.TxHash.String(), err)
+	}
+
 	// make a new transaction record
 	lc.currentTrx = &trx.BlockchainTransaction{
 		TXHash:       ev.TxHash,
 		BlockNumber:  ev.BlockNumber,
-		Timestamp:    0,
+		Timestamp:    hexutil.Uint64(block.Time()),
 		Transactions: make([]trx.Erc20Transaction, 0),
+	}
+	if tran.To() != nil {
+		lc.currentTrx.To = *tran.To()
 	}
 
 	fmt.Println("new group", ev.TxHash.String())
