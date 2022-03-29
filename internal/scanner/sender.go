@@ -77,8 +77,9 @@ func (se *sender) process(tx trx.BlockchainTransaction) {
 	// add to queue
 	se.queue = append(se.queue, tx)
 
-	if len(se.queue) >= 100 || time.Now().Sub(se.lastSent) > 60 * time.Second {
+	if len(se.queue) >= 40 || time.Now().Sub(se.lastSent) > 2 * time.Minute {
 		se.send()
+		se.lastSent = time.Now()
 	}
 }
 
