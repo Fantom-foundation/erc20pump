@@ -108,9 +108,6 @@ func (lc *logCollector) newTransaction(ev types.Log) {
 	if block == nil {
 		log.Fatalf("unable to get block %d; %s", ev.BlockNumber, err)
 	}
-	if block.Header() == nil {
-		log.Fatalf("unable to get block %d - nil header; %s", ev.BlockNumber, err)
-	}
 
 	tran, err := lc.cache.Transaction(ev.TxHash, lc.rpc.Transaction)
 	if tran == nil {
