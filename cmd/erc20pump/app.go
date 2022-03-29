@@ -15,6 +15,8 @@ func config() *cfg.Config {
 	flag.StringVar(&con.OperaURI, "opera", "https://rpcapi.fantom.network", "Address of the Fantom Opera RPC interface.")
 	flag.Uint64Var(&con.StartBlock, "from", 0, "Numeric ID of the first loaded block.")
 	flag.StringVar(&addr, "contract", "0x0", "Address of the contract being scanned for ERC20 transfers.")
+	flag.StringVar(&con.AwsRegion, "awsregion", "eu-central-1", "The AWS region to upload the JSONs to")
+	flag.StringVar(&con.AwsS3Bucket, "awsbucket", "", "The AWS S3 bucket to upload the JSONs to")
 	flag.Parse()
 
 	// decode contract address
