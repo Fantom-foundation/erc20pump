@@ -4,6 +4,7 @@ package scanner
 import (
 	"bytes"
 	"erc20pump/internal/cfg"
+	"erc20pump/internal/scanner/cache"
 	"erc20pump/internal/scanner/rpc"
 	"erc20pump/internal/trx"
 	"fmt"
@@ -22,6 +23,7 @@ type logCollector struct {
 	currentTrx *trx.BlockchainTransaction
 	tokens     map[common.Address]trx.Token
 	rpc        *rpc.Adapter
+	cache      *cache.MemCache
 	wg         *sync.WaitGroup
 }
 
@@ -32,13 +34,14 @@ var LogTopicProcessor = map[common.Hash]func(*types.Log, func(common.Address) tr
 }
 
 // newCollector creates a new log collector instance.
-func newCollector(_ *cfg.Config, in chan types.Log, rpc *rpc.Adapter) *logCollector {
+func newCollector(_ *cfg.Config, in chan types.Log, rpc *rpc.Adapter, cache *cache.MemCache) *logCollector {
 	return &logCollector{
 		input:   in,
 		output:  make(chan trx.BlockchainTransaction, 25),
 		tokens:  make(map[common.Address]trx.Token),
 		sigStop: make(chan bool, 1),
 		rpc:     rpc,
+		cache:   cache,
 	}
 }
 

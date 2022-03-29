@@ -58,17 +58,12 @@ func (a *Adapter) GetLogs(topics [][]common.Hash, from uint64, to uint64) ([]typ
 	})
 }
 
-// TrxRecipient collect recipient of a transaction of the given hash.
-func (a *Adapter) TrxRecipient(tx common.Hash) (common.Address, error) {
+// Transaction provides the transaction details.
+func (a *Adapter) Transaction(tx common.Hash) (*types.Transaction, error) {
 	trx, _, err := a.ftm.TransactionByHash(context.Background(), tx)
 	if err != nil {
 		fmt.Println("failed to get transaction", err.Error(), tx.String())
-		return common.Address{}, err
+		return nil, err
 	}
-
-	if trx.To() == nil {
-		return common.Address{}, fmt.Errorf("contract deployment")
-	}
-
-	return *trx.To(), nil
+	return trx, nil
 }

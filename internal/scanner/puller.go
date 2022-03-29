@@ -4,10 +4,12 @@ package scanner
 import (
 	"bytes"
 	"erc20pump/internal/cfg"
+	"erc20pump/internal/scanner/cache"
 	"erc20pump/internal/scanner/rpc"
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"log"
 	"sync"
 	"time"
 )
@@ -26,13 +28,14 @@ type logPuller struct {
 	sigStop       chan bool
 	wg            *sync.WaitGroup
 	rpc           *rpc.Adapter
+	cache         *cache.MemCache
 	topics        [][]common.Hash
 	txRecipients  map[common.Hash]common.Address
 	contractMatch func(rc *common.Address) bool
 }
 
 // newPuller creates a new puller service.
-func newPuller(cfg *cfg.Config, rpc *rpc.Adapter) *logPuller {
+func newPuller(cfg *cfg.Config, rpc *rpc.Adapter, cache *cache.MemCache) *logPuller {
 	// build a list of topics we want to scan for
 	topics := [][]common.Hash{make([]common.Hash, 0, len(LogTopicProcessor))}
 	for t := range LogTopicProcessor {
@@ -47,6 +50,7 @@ func newPuller(cfg *cfg.Config, rpc *rpc.Adapter) *logPuller {
 		sigStop:      make(chan bool, 1),
 		topics:       topics,
 		rpc:          rpc,
+		cache:        cache,
 		contractMatch: func(rc *common.Address) bool {
 			return bytes.Compare(rc.Bytes(), cfg.ScanContract.Bytes()) == 0
 		},
@@ -148,20 +152,9 @@ func (lp *logPuller) nextLogs() []types.Log {
 
 // process given event log record.
 func (lp *logPuller) process(ev types.Log) {
-	var err error
 
 	// do we know the transaction recipient?
-	rec, ok := lp.txRecipients[ev.TxHash]
-	if !ok {
-		rec, err = lp.rpc.TrxRecipient(ev.TxHash)
-		if err != nil {
-			fmt.Println("can not get tx recipient:", err.Error())
-			return
-		}
-
-		// remember the transaction recipient in case we have more logs from this tx
-		lp.txRecipients[ev.TxHash] = rec
-	}
+	rec := lp.getTrxRecipient(ev.TxHash)
 
 	// is the recipient interesting?
 	if !lp.contractMatch(&rec) {
@@ -172,4 +165,16 @@ func (lp *logPuller) process(ev types.Log) {
 
 	// this one is what we're looking for
 	lp.output <- ev
+}
+
+func (lp *logPuller) getTrxRecipient(tx common.Hash) common.Address {
+	trx, err := lp.cache.Transaction(tx, lp.rpc.Transaction)
+	if trx == nil {
+		log.Println("unable to get recipient of trx", tx.String(), err)
+		return common.Address{}
+	}
+	if trx.To() == nil {
+		return common.Address{} // contract deployment
+	}
+	return *trx.To()
 }

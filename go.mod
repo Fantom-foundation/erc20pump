@@ -3,6 +3,7 @@ module erc20pump
 go 1.17
 
 require (
+	github.com/allegro/bigcache v1.2.1-0.20190218064605-e24eb225f156
 	github.com/aws/aws-sdk-go v1.43.27
 	github.com/ethereum/go-ethereum v1.10.16
 	github.com/status-im/keycard-go v0.0.0-20190316090335-8537d3370df4

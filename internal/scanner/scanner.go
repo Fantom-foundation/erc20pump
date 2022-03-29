@@ -3,6 +3,7 @@ package scanner
 
 import (
 	"erc20pump/internal/cfg"
+	"erc20pump/internal/scanner/cache"
 	"erc20pump/internal/scanner/rpc"
 	"sync"
 )
@@ -25,9 +26,12 @@ func New(c *cfg.Config) (*Service, error) {
 		return nil, err
 	}
 
+	// create cache
+	cch := cache.New()
+
 	// make sub-services
-	lp := newPuller(c, ada)
-	lc := newCollector(c, lp.output, ada)
+	lp := newPuller(c, ada, cch)
+	lc := newCollector(c, lp.output, ada, cch)
 	se := newSender(c, lc.output)
 
 	// build the manager
