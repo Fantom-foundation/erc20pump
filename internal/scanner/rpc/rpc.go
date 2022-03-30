@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	client "github.com/ethereum/go-ethereum/rpc"
+	"log"
 	"math/big"
 )
 
@@ -36,7 +37,7 @@ func New(cfg *cfg.Config) (*Adapter, error) {
 func connect(uri string) (*client.Client, error) {
 	c, err := client.Dial(uri)
 	if err != nil {
-		fmt.Println("can not connect Opera", err.Error())
+		log.Println("can not connect Opera", err.Error())
 		return nil, err
 	}
 
@@ -58,22 +59,46 @@ func (a *Adapter) GetLogs(topics [][]common.Hash, from uint64, to uint64) ([]typ
 	})
 }
 
-// Transaction provides the transaction details.
-func (a *Adapter) Transaction(tx common.Hash) (*types.Transaction, error) {
+// TrxRecipient provides a recipient of a transaction by hash.
+func (a *Adapter) TrxRecipient(tx common.Hash) (common.Address, error) {
 	trx, _, err := a.ftm.TransactionByHash(context.Background(), tx)
 	if err != nil {
-		fmt.Println("failed to get transaction", err.Error(), tx.String())
-		return nil, err
+		log.Println("failed to get transaction", err.Error(), tx.String())
+		return common.Address{}, err
 	}
-	return trx, nil
+
+	if trx.To() == nil {
+		log.Printf("contract deployment at %s", tx.String())
+		return common.Address{}, nil
+	}
+
+	return *trx.To(), nil
 }
 
-// Block provides the block details.
-func (a *Adapter) Block(blockNumber uint64) (*types.Block, error) {
+// TrxSender provides address of a sender of the given transaction.
+func (a *Adapter) TrxSender(tx common.Hash) (common.Address, error) {
+	trx, _, err := a.ftm.TransactionByHash(context.Background(), tx)
+	if err != nil {
+		log.Println("failed to get transaction", err.Error(), tx.String())
+		return common.Address{}, err
+	}
+
+	// get transaction sender
+	msg, err := trx.AsMessage(types.NewEIP155Signer(trx.ChainId()), nil)
+	if err != nil {
+		log.Println("invalid transaction", err.Error())
+		return common.Address{}, err
+	}
+
+	return msg.From(), nil
+}
+
+// BlockTime provides timestamp of a block by its number.
+func (a *Adapter) BlockTime(blockNumber uint64) (uint64, error) {
 	block, err := a.ftm.BlockByNumber(context.Background(), big.NewInt(int64(blockNumber)))
 	if err != nil {
 		fmt.Println("failed to get block", blockNumber, err)
-		return nil, err
+		return 0, err
 	}
-	return block, nil
+	return block.Time(), nil
 }

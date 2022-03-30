@@ -7,6 +7,7 @@ import (
 	"erc20pump/internal/cfg"
 	"erc20pump/internal/trx"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"sync"
 	"time"
@@ -34,11 +35,11 @@ func newSender(config *cfg.Config, in chan trx.BlockchainTransaction) *sender {
 	}))
 
 	return &sender{
-		input:   in,
+		input:    in,
 		uploader: s3manager.NewUploader(sess),
 		lastSent: time.Now(),
-		bucket:  config.AwsS3Bucket,
-		sigStop: make(chan bool, 1),
+		bucket:   config.AwsS3Bucket,
+		sigStop:  make(chan bool, 1),
 	}
 }
 
@@ -58,7 +59,7 @@ func (se *sender) stop() {
 // scan the blockchain for log records of interest.
 func (se *sender) observe() {
 	defer func() {
-		fmt.Println("sender terminated")
+		log.Println("sender terminated")
 		se.wg.Done()
 	}()
 
@@ -74,15 +75,40 @@ func (se *sender) observe() {
 
 // process adds the transaction into queue, sends if the queue is log/old enough
 func (se *sender) process(tx trx.BlockchainTransaction) {
+	// store locally instead if no bucket is specified
+	if se.bucket == "" {
+		se.save(tx)
+		return
+	}
+
 	// add to queue
 	se.queue = append(se.queue, tx)
 
-	if len(se.queue) >= 40 || time.Now().Sub(se.lastSent) > 2 * time.Minute {
+	if len(se.queue) >= 40 || time.Now().Sub(se.lastSent) > 2*time.Minute {
 		se.send()
 		se.lastSent = time.Now()
 	}
 }
 
+// save stores the transaction data locally to a file.
+func (se *sender) save(tx trx.BlockchainTransaction) {
+	log.Println("storing", tx.TXHash.String())
+
+	// encode the transaction into a human-readable JSON struct
+	data, err := json.MarshalIndent(tx, "", "    ")
+	if err != nil {
+		log.Println("can not encode to JSON", err.Error())
+		return
+	}
+
+	// put the data into a file
+	err = ioutil.WriteFile(tx.TXHash.String()+".json", data, 0644)
+	if err != nil {
+		log.Println("can not write JSON to file", err.Error())
+	}
+}
+
+// send the data to S3
 func (se *sender) send() {
 	log.Printf("sending %d transactions", len(se.queue))
 
@@ -98,7 +124,7 @@ func (se *sender) send() {
 	// put the data into a file
 	result, err := se.uploader.Upload(&s3manager.UploadInput{
 		Bucket: aws.String(se.bucket),
-		Key:    aws.String(se.queue[0].TXHash.String()+".json"),
+		Key:    aws.String(se.queue[0].TXHash.String() + ".json"),
 		Body:   bytes.NewReader(data),
 	})
 	if err != nil {

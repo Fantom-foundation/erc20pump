@@ -1,54 +1,78 @@
 package cache
 
 import (
+	"encoding/binary"
+	"fmt"
+	"github.com/allegro/bigcache"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/patrickmn/go-cache"
-	"strconv"
+	"log"
 	"time"
 )
 
 // MemCache represents in-memory cache.
 type MemCache struct {
-	cache *cache.Cache
+	cache *bigcache.BigCache
 }
 
 // New creates a new in-memory bridge instance.
 func New() *MemCache {
-	c := cache.New(5 * time.Minute, 10 * time.Minute)
+	c, err := bigcache.NewBigCache(bigcache.Config{
+		Shards:             2048,
+		LifeWindow:         5 * time.Minute,
+		CleanWindow:        5 * time.Minute,
+		MaxEntriesInWindow: 1500 * 10 * 60,
+		MaxEntrySize:       2048,
+		Verbose:            false,
+		HardMaxCacheSize:   300,
+		Logger:             log.Default(),
+	})
+	if err != nil {
+		log.Fatalf("can not create cache; %s", err.Error())
+	}
 	return &MemCache{cache: c}
 }
 
-func (c *MemCache) Transaction(tx common.Hash, loader func(tx common.Hash)(*types.Transaction, error)) (*types.Transaction, error) {
-	key := "t" + tx.String()
+// BlockTime returns cached time of the block by its number.
+func (c *MemCache) BlockTime(bn uint64, load func(uint64) (uint64, error)) (uint64, error) {
+	key := fmt.Sprintf("blk%x", bn)
 
-	hit, found := c.cache.Get(key)
-	if found {
-		return hit.(*types.Transaction), nil
+	data, err := c.cache.Get(key)
+	if err == nil {
+		return binary.LittleEndian.Uint64(data), nil
 	}
 
-	trx, err := loader(tx) // load data from primary source
+	// non cached - take the slow path
+	v, err := load(bn)
 	if err != nil {
-		return trx, err
+		return 0, err
 	}
 
-	c.cache.Set(key, trx, cache.DefaultExpiration)
-	return trx, nil
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, v)
+	if err := c.cache.Set(key, b); err != nil {
+		log.Printf("unable to store; %s", err.Error())
+	}
+
+	return v, nil
 }
 
-func (c *MemCache) Block(blockNumber uint64, loader func(blockNumber uint64)(*types.Block, error)) (block *types.Block, err error) {
-	key := "b" + strconv.FormatUint(blockNumber, 16)
-
-	hit, found := c.cache.Get(key)
-	if found {
-		return hit.(*types.Block), nil
+// TrxRecipient provides cached recipient of a transaction by its hash.
+func (c *MemCache) TrxRecipient(tx common.Hash, load func(common.Hash) (common.Address, error)) (common.Address, error) {
+	// do we have the address in cache?
+	data, err := c.cache.Get(tx.String())
+	if err == nil {
+		return common.BytesToAddress(data), nil
 	}
 
-	block, err = loader(blockNumber) // load data from primary source
+	a, err := load(tx)
 	if err != nil {
-		return block, err
+		log.Fatalf("recipient not available; %s", err.Error())
+		return common.Address{}, err
 	}
 
-	c.cache.Set(key, block, cache.DefaultExpiration)
-	return block, nil
+	if err := c.cache.Set(tx.String(), a.Bytes()); err != nil {
+		log.Printf("can not cache; %s", err.Error())
+	}
+
+	return a, nil
 }

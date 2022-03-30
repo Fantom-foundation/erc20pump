@@ -7,13 +7,13 @@ import (
 	"erc20pump/internal/scanner/cache"
 	"erc20pump/internal/scanner/rpc"
 	"erc20pump/internal/trx"
-	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"log"
 	"math/big"
 	"sync"
+	"time"
 )
 
 // logCollector represents a service responsible for collecting patches of transfers
@@ -61,10 +61,14 @@ func (lc *logCollector) stop() {
 
 // collect interesting transactions and build collections for sending.
 func (lc *logCollector) collect() {
+	// auto-close pending transaction if no new event arrived in given time
+	tick := time.NewTicker(5 * time.Second)
+
 	defer func() {
+		tick.Stop()
 		close(lc.output)
 
-		fmt.Println("log collector terminated")
+		log.Println("log collector terminated")
 		lc.wg.Done()
 	}()
 
@@ -72,7 +76,12 @@ func (lc *logCollector) collect() {
 		select {
 		case <-lc.sigStop:
 			return
+
+		case <-tick.C:
+			lc.newTransaction(nil)
+
 		case ev := <-lc.input:
+			tick.Reset(5 * time.Second)
 			lc.process(ev)
 		}
 	}
@@ -82,13 +91,13 @@ func (lc *logCollector) collect() {
 func (lc *logCollector) process(ev types.Log) {
 	// is this the same chain trx?
 	if lc.currentTrx == nil || bytes.Compare(lc.currentTrx.TXHash.Bytes(), ev.TxHash.Bytes()) != 0 {
-		lc.newTransaction(ev)
+		lc.newTransaction(&ev)
 	}
 
 	// do we have a decoder for this type of event?
 	decode, ok := LogTopicProcessor[ev.Topics[0]]
 	if !ok {
-		fmt.Println("decoder lookup failed")
+		log.Println("decoder lookup failed")
 		return
 	}
 
@@ -97,35 +106,30 @@ func (lc *logCollector) process(ev types.Log) {
 }
 
 // newTransaction closes the current transaction, if any, and makes a new one.
-func (lc *logCollector) newTransaction(ev types.Log) {
+func (lc *logCollector) newTransaction(ev *types.Log) {
 	// submit the current transaction
 	if lc.currentTrx != nil {
-		fmt.Println("closing group", lc.currentTrx.TXHash.String())
+		log.Println("closing group", lc.currentTrx.TXHash.String())
 		lc.output <- *lc.currentTrx
 	}
 
-	block, err := lc.cache.Block(ev.BlockNumber, lc.rpc.Block)
-	if block == nil {
-		log.Fatalf("unable to get block %d; %s", ev.BlockNumber, err)
-	}
-
-	tran, err := lc.cache.Transaction(ev.TxHash, lc.rpc.Transaction)
-	if tran == nil {
-		log.Fatalf("unable to get trx %s; %s", ev.TxHash.String(), err)
+	// no new log, just closing
+	if ev == nil {
+		lc.currentTrx = nil
+		return
 	}
 
 	// make a new transaction record
 	lc.currentTrx = &trx.BlockchainTransaction{
 		TXHash:       ev.TxHash,
+		From:         lc.sender(ev.TxHash),
+		To:           lc.recipient(ev.TxHash),
 		BlockNumber:  hexutil.Uint64(ev.BlockNumber),
-		Timestamp:    hexutil.Uint64(block.Time()),
+		Timestamp:    lc.timestamp(ev.BlockNumber),
 		Transactions: make([]trx.Erc20Transaction, 0),
 	}
-	if tran.To() != nil {
-		lc.currentTrx.To = *tran.To()
-	}
 
-	fmt.Println("new group", ev.TxHash.String())
+	log.Println("new group", ev.TxHash.String())
 }
 
 // decodeErc20Transfer decodes ERC20 transfer event log record into ERC20 trx structure.
@@ -140,6 +144,36 @@ func decodeErc20Transfer(ev *types.Log, token func(common.Address) trx.Token) tr
 	}
 }
 
+// timestamp provides time of the block by block number.
+func (lc *logCollector) timestamp(blk uint64) hexutil.Uint64 {
+	ts, err := lc.cache.BlockTime(blk, lc.rpc.BlockTime)
+	if err != nil {
+		log.Fatalf("block timestamp not available for %d; %s", blk, err.Error())
+		return 0
+	}
+	return hexutil.Uint64(ts)
+}
+
+// recipient provides recipient of a transaction by its hash.
+func (lc *logCollector) recipient(tx common.Hash) common.Address {
+	a, err := lc.cache.TrxRecipient(tx, lc.rpc.TrxRecipient)
+	if err != nil {
+		log.Fatalf("no recipient available for %s; %s", tx.String(), err.Error())
+		return common.Address{}
+	}
+	return a
+}
+
+// sender provides signing address of a transaction by its hash.
+func (lc *logCollector) sender(tx common.Hash) common.Address {
+	a, err := lc.rpc.TrxSender(tx)
+	if err != nil {
+		log.Fatalf("no sender available for %s; %s", tx.String(), err.Error())
+		return common.Address{}
+	}
+	return a
+}
+
 // token provides an ERC20 detail structure based on token contract address.
 func (lc *logCollector) token(adr common.Address) trx.Token {
 	// do we already know the token?
@@ -151,19 +185,19 @@ func (lc *logCollector) token(adr common.Address) trx.Token {
 	// we need to pull the data from RPC
 	name, err := lc.rpc.Erc20Name(adr)
 	if err != nil {
-		fmt.Println("token name lookup failed", err.Error(), adr.Hex())
+		log.Println("token name lookup failed", err.Error(), adr.Hex())
 		name = "unknown"
 	}
 
 	symbol, err := lc.rpc.Erc20Symbol(adr)
 	if err != nil {
-		fmt.Println("token symbol lookup failed", err.Error(), adr.Hex())
+		log.Println("token symbol lookup failed", err.Error(), adr.Hex())
 		name = "-"
 	}
 
 	decimals, err := lc.rpc.Erc20Decimals(adr)
 	if err != nil {
-		fmt.Println("token decimals lookup failed", err.Error(), adr.Hex())
+		log.Println("token decimals lookup failed", err.Error(), adr.Hex())
 		decimals = 0
 	}
 
@@ -174,7 +208,7 @@ func (lc *logCollector) token(adr common.Address) trx.Token {
 		Decimals: decimals,
 	}
 
-	fmt.Println("new token found", tok.Name, "/", tok.Symbol, "[", tok.Decimals, "]")
+	log.Println("new token found", tok.Name, "/", tok.Symbol, "[", tok.Decimals, "]")
 	lc.tokens[adr] = tok
 
 	return tok

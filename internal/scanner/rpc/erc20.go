@@ -3,9 +3,9 @@ package rpc
 
 import (
 	"context"
-	"fmt"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"log"
 	"math/big"
 )
 
@@ -20,7 +20,7 @@ func (a *Adapter) Erc20Name(adr common.Address) (string, error) {
 	}, nil)
 
 	if err != nil {
-		fmt.Println("can not get ERC20 name", err.Error())
+		log.Println("can not get ERC20 name", err.Error())
 		return "", err
 	}
 
@@ -38,7 +38,7 @@ func (a *Adapter) Erc20Symbol(adr common.Address) (string, error) {
 	}, nil)
 
 	if err != nil {
-		fmt.Println("can not get ERC20 symbol", err.Error())
+		log.Println("can not get ERC20 symbol", err.Error())
 		return "", err
 	}
 
@@ -56,7 +56,7 @@ func (a *Adapter) Erc20Decimals(adr common.Address) (uint8, error) {
 	}, nil)
 
 	if err != nil {
-		fmt.Println("can not get ERC20 decimals", err.Error())
+		log.Println("can not get ERC20 decimals", err.Error())
 		return 0, err
 	}
 
