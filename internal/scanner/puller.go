@@ -6,7 +6,6 @@ import (
 	"erc20pump/internal/cfg"
 	"erc20pump/internal/scanner/cache"
 	"erc20pump/internal/scanner/rpc"
-	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"log"
@@ -79,12 +78,12 @@ func (lp *logPuller) scan() {
 		info.Stop()
 		close(lp.output)
 
-		fmt.Println("log puller terminated")
+		log.Println("log puller terminated")
 		lp.wg.Done()
 	}()
 
 	var logs []types.Log
-	var log types.Log
+	var record types.Log
 	for {
 		// terminate if requested
 		select {
@@ -93,7 +92,7 @@ func (lp *logPuller) scan() {
 		case <-tick.C:
 			lp.fetchHead()
 		case <-info.C:
-			fmt.Println("scanner at #", lp.currentBlock, "head at #", lp.topBlock)
+			log.Println("scanner at #", lp.currentBlock, "head at #", lp.topBlock)
 		default:
 		}
 
@@ -103,9 +102,9 @@ func (lp *logPuller) scan() {
 			continue
 		}
 
-		// get the next log and process
-		log, logs = logs[0], logs[1:]
-		lp.process(log)
+		// get the next record and process
+		record, logs = logs[0], logs[1:]
+		lp.process(record)
 	}
 }
 
@@ -115,14 +114,14 @@ func (lp *logPuller) fetchHead() {
 
 	lp.topBlock, err = lp.rpc.TopBlock()
 	if err != nil {
-		fmt.Println("error pulling the current head", err.Error())
+		log.Println("error pulling the current head", err.Error())
 	}
 }
 
 // nextLogs pulls the next set of log records from the backend server.
 func (lp *logPuller) nextLogs() []types.Log {
 	// do we even have anything to pull?
-	if lp.currentBlock >= lp.topBlock {
+	if lp.currentBlock > lp.topBlock {
 		return nil
 	}
 
@@ -135,7 +134,7 @@ func (lp *logPuller) nextLogs() []types.Log {
 	// pull the data from remote server
 	logs, err := lp.rpc.GetLogs(lp.topics, lp.currentBlock, target)
 	if err != nil {
-		fmt.Println("failed to pull logs", err.Error())
+		log.Println("failed to pull logs", err.Error())
 		return nil
 	}
 
@@ -146,29 +145,20 @@ func (lp *logPuller) nextLogs() []types.Log {
 
 // process given event log record.
 func (lp *logPuller) process(ev types.Log) {
-
 	// do we know the transaction recipient?
-	rec := lp.getTrxRecipient(ev.TxHash)
+	rec, err := lp.cache.TrxRecipient(ev.TxHash, lp.rpc.TrxRecipient)
+	if err != nil {
+		log.Println("recipient not available", err.Error())
+		return
+	}
 
 	// is the recipient interesting?
 	if !lp.contractMatch(&rec) {
 		return
 	}
 
-	fmt.Println("match", rec.String(), "on", ev.TxHash.String())
+	log.Println("match", rec.String(), "on", ev.TxHash.String())
 
 	// this one is what we're looking for
 	lp.output <- ev
-}
-
-func (lp *logPuller) getTrxRecipient(tx common.Hash) common.Address {
-	trx, err := lp.cache.Transaction(tx, lp.rpc.Transaction)
-	if trx == nil {
-		log.Println("unable to get recipient of trx", tx.String(), err)
-		return common.Address{}
-	}
-	if trx.To() == nil {
-		return common.Address{} // contract deployment
-	}
-	return *trx.To()
 }

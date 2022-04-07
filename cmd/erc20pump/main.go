@@ -3,7 +3,7 @@ package main
 
 import (
 	"erc20pump/internal/scanner"
-	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -21,7 +21,7 @@ func main() {
 
 	// start the scanner
 	s.Run()
-	fmt.Println("done")
+	log.Println("done")
 }
 
 // captureTerminate setups terminate signals observation.
