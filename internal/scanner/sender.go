@@ -2,28 +2,29 @@
 package scanner
 
 import (
-	"bytes"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"erc20pump/internal/cfg"
 	"erc20pump/internal/trx"
 	"fmt"
+	"github.com/aws/aws-sdk-go/service/kinesis"
 	"log"
 	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
 
 // sender represents a sub-service responsible for sending collected transactions
 type sender struct {
 	input    chan trx.BlockchainTransaction
-	uploader *s3manager.Uploader
+	uploader *kinesis.Kinesis
 	queue    []trx.BlockchainTransaction
-	lastSent time.Time
-	bucket   string
-	sigStop  chan bool
+	lastSent   time.Time
+	streamName string
+	sigStop    chan bool
 	wg       *sync.WaitGroup
 }
 
@@ -34,11 +35,11 @@ func newSender(config *cfg.Config, in chan trx.BlockchainTransaction) *sender {
 	}))
 
 	return &sender{
-		input:   in,
-		uploader: s3manager.NewUploader(sess),
-		lastSent: time.Now(),
-		bucket:  config.AwsS3Bucket,
-		sigStop: make(chan bool, 1),
+		input:      in,
+		uploader:   kinesis.New(sess),
+		lastSent:   time.Now(),
+		streamName: config.AwsStream,
+		sigStop:    make(chan bool, 1),
 	}
 }
 
@@ -77,7 +78,7 @@ func (se *sender) process(tx trx.BlockchainTransaction) {
 	// add to queue
 	se.queue = append(se.queue, tx)
 
-	if len(se.queue) >= 40 || time.Now().Sub(se.lastSent) > 2 * time.Minute {
+	if len(se.queue) >= 10 || time.Now().Sub(se.lastSent) > 2 * time.Minute {
 		se.send()
 		se.lastSent = time.Now()
 	}
@@ -95,17 +96,20 @@ func (se *sender) send() {
 
 	fmt.Printf("storing data \"%s\"\n", string(data))
 
-	// put the data into a file
-	result, err := se.uploader.Upload(&s3manager.UploadInput{
-		Bucket: aws.String(se.bucket),
-		Key:    aws.String(se.queue[0].TXHash.String()+".json"),
-		Body:   bytes.NewReader(data),
+	hash := md5.Sum(data)
+	dataHash := hex.EncodeToString(hash[:])
+
+	// put the data into the Kinesis data stream
+	_, err = se.uploader.PutRecord(&kinesis.PutRecordInput{
+		StreamName: &se.streamName,
+		Data:       data,
+		PartitionKey: &dataHash,
 	})
 	if err != nil {
-		log.Fatalf("Failed to upload into S3; %s", err)
+		log.Fatalf("Failed to upload into Kinesis; %s", err)
 		return
 	}
-	log.Printf("Uploaded %d transactions into S3 as %s", len(se.queue), result.Location)
+	log.Printf("Uploaded %d transactions into Kinesis", len(se.queue))
 
 	// empty the queue
 	se.queue = make([]trx.BlockchainTransaction, 0, 100)

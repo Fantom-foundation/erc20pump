@@ -9,6 +9,6 @@ type Config struct {
 	StartBlock   uint64
 	ScanContract common.Address
 
-	AwsRegion   string
-	AwsS3Bucket string
+	AwsRegion string
+	AwsStream string
 }
