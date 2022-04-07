@@ -10,7 +10,7 @@ import (
 type BlockchainTransaction struct {
 	TXHash       common.Hash        `json:"hash"`
 	BlockNumber  hexutil.Uint64     `json:"blockNumber"`
-	Timestamp    hexutil.Uint64     `json:"timestamp"`
+	Timestamp    uint64             `json:"timestamp"`
 	From         common.Address     `json:"from"`
 	To           common.Address     `json:"to"`
 	Transactions []Erc20Transaction `json:"erc20Transactions"`
@@ -22,5 +22,5 @@ type Erc20Transaction struct {
 	Type      string         `json:"trxType"`
 	Sender    common.Address `json:"sender"`
 	Recipient common.Address `json:"recipient"`
-	Amount    hexutil.Big    `json:"amount"`
+	Amount    int64          `json:"amount"`
 }

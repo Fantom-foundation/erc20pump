@@ -140,18 +140,18 @@ func decodeErc20Transfer(ev *types.Log, token func(common.Address) trx.Token) tr
 		Type:      "TRANSFER",
 		Sender:    common.BytesToAddress(ev.Topics[1].Bytes()),
 		Recipient: common.BytesToAddress(ev.Topics[2].Bytes()),
-		Amount:    hexutil.Big(*new(big.Int).SetBytes(ev.Data[:32])),
+		Amount:    new(big.Int).SetBytes(ev.Data[:32]).Int64(),
 	}
 }
 
 // timestamp provides time of the block by block number.
-func (lc *logCollector) timestamp(blk uint64) hexutil.Uint64 {
+func (lc *logCollector) timestamp(blk uint64) uint64 {
 	ts, err := lc.cache.BlockTime(blk, lc.rpc.BlockTime)
 	if err != nil {
 		log.Fatalf("block timestamp not available for %d; %s", blk, err.Error())
 		return 0
 	}
-	return hexutil.Uint64(ts)
+	return ts
 }
 
 // recipient provides recipient of a transaction by its hash.
