@@ -3,14 +3,13 @@ package trx
 
 import (
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
 // BlockchainTransaction represents a blockchain transaction.
 type BlockchainTransaction struct {
 	TXHash       common.Hash        `json:"hash"`
-	BlockNumber  hexutil.Uint64     `json:"blockNumber"`
-	Timestamp    uint64             `json:"timestamp"`
+	BlockNumber  string             `json:"blockNumber"`
+	Timestamp    string             `json:"timestamp"`
 	From         common.Address     `json:"from"`
 	To           common.Address     `json:"to"`
 	Transactions []Erc20Transaction `json:"erc20Transactions"`
@@ -22,5 +21,5 @@ type Erc20Transaction struct {
 	Type      string         `json:"trxType"`
 	Sender    common.Address `json:"sender"`
 	Recipient common.Address `json:"recipient"`
-	Amount    int64          `json:"amount"`
+	Amount    string         `json:"amount"`
 }

@@ -8,10 +8,10 @@ import (
 	"erc20pump/internal/scanner/rpc"
 	"erc20pump/internal/trx"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"log"
 	"math/big"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -124,7 +124,7 @@ func (lc *logCollector) newTransaction(ev *types.Log) {
 		TXHash:       ev.TxHash,
 		From:         lc.sender(ev.TxHash),
 		To:           lc.recipient(ev.TxHash),
-		BlockNumber:  hexutil.Uint64(ev.BlockNumber),
+		BlockNumber:  strconv.FormatUint(ev.BlockNumber, 10),
 		Timestamp:    lc.timestamp(ev.BlockNumber),
 		Transactions: make([]trx.Erc20Transaction, 0),
 	}
@@ -140,18 +140,18 @@ func decodeErc20Transfer(ev *types.Log, token func(common.Address) trx.Token) tr
 		Type:      "TRANSFER",
 		Sender:    common.BytesToAddress(ev.Topics[1].Bytes()),
 		Recipient: common.BytesToAddress(ev.Topics[2].Bytes()),
-		Amount:    new(big.Int).SetBytes(ev.Data[:32]).Int64(),
+		Amount:    new(big.Int).SetBytes(ev.Data[:32]).String(),
 	}
 }
 
 // timestamp provides time of the block by block number.
-func (lc *logCollector) timestamp(blk uint64) uint64 {
+func (lc *logCollector) timestamp(blk uint64) string {
 	ts, err := lc.cache.BlockTime(blk, lc.rpc.BlockTime)
 	if err != nil {
 		log.Fatalf("block timestamp not available for %d; %s", blk, err.Error())
-		return 0
+		return ""
 	}
-	return ts
+	return strconv.FormatUint(ts, 10)
 }
 
 // recipient provides recipient of a transaction by its hash.
