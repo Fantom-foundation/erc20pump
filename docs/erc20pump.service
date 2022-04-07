@@ -1,0 +1,21 @@
+[Unit]
+Description=erc20pumpForAwsLab
+After=opera.service
+
+[Service]
+Type=simple
+User=pump
+Group=opera
+WorkingDirectory=/home/pump
+ExecStart=/home/pump/go/src/erc20pump/build/erc20pump \
+    -contract 0x841fad6eae12c286d1fd18d1d525dffa75c7effe \
+    -block 4266414 \
+    -opera /var/opera/mainnet/opera.ipc
+    -awsstream testing-stream
+Restart=on-failure
+RestartSec=30s
+TimeoutSec=120
+
+[Install]
+WantedBy=multi-user.target
+
