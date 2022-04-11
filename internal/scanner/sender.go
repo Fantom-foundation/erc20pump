@@ -22,7 +22,6 @@ import (
 type sender struct {
 	input    chan trx.BlockchainTransaction
 	uploader *kinesis.Kinesis
-	queue    []trx.BlockchainTransaction
 	lastSent   time.Time
 	streamName string
 	sigStop    chan bool
@@ -79,15 +78,8 @@ func (se *sender) process(tx trx.BlockchainTransaction) {
 	// store locally instead if no bucket is specified
 	if se.streamName == "" {
 		se.save(tx)
-		return
-	}
-
-	// add to queue
-	se.queue = append(se.queue, tx)
-
-	if len(se.queue) >= 10 || time.Now().Sub(se.lastSent) > 2 * time.Minute {
-		se.send()
-		se.lastSent = time.Now()
+	} else {
+		se.send(tx)
 	}
 }
 
@@ -110,13 +102,13 @@ func (se *sender) save(tx trx.BlockchainTransaction) {
 }
 
 // send the data to S3
-func (se *sender) send() {
-	log.Printf("sending %d transactions", len(se.queue))
+func (se *sender) send(tx trx.BlockchainTransaction) {
+	log.Printf("Sending transaction")
 
 	// encode the transaction into a human-readable JSON struct
-	data, err := json.MarshalIndent(se.queue, "", "    ")
+	data, err := json.MarshalIndent(tx, "", "    ")
 	if err != nil {
-		fmt.Println("can not encode transactions into JSON", err.Error())
+		fmt.Println("can not encode transaction into JSON", err.Error())
 		return
 	}
 
@@ -135,8 +127,6 @@ func (se *sender) send() {
 		log.Fatalf("Failed to upload into Kinesis; %s", err)
 		return
 	}
-	log.Printf("Uploaded %d transactions into Kinesis", len(se.queue))
 
-	// empty the queue
-	se.queue = make([]trx.BlockchainTransaction, 0, 100)
+	log.Printf("Uploaded transaction into Kinesis")
 }
